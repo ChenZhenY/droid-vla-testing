@@ -1,1 +1,4 @@
 *.DS_Store
+videos/
+results/
+record_files/

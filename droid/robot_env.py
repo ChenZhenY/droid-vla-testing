@@ -70,7 +70,7 @@ class RobotEnv(gym.Env):
         else:
             noise = None
 
-        self._robot.update_joints(self.reset_joints, velocity=False, blocking=True, cartesian_noise=noise)
+        self._robot.update_joints(self.reset_joints, velocity=False, blocking=False, cartesian_noise=noise)
 
     def update_robot(self, action, action_space="cartesian_velocity", gripper_action_space=None, blocking=False):
         action_info = self._robot.update_command(

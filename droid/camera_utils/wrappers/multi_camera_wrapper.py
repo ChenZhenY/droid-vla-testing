@@ -83,7 +83,10 @@ class MultiCameraWrapper:
         for cam_id in all_cam_ids:
             if not self.camera_dict[cam_id].is_running():
                 continue
+
+            # try:
             data_dict, timestamp_dict = self.camera_dict[cam_id].read_camera()
+            
 
             for key in data_dict:
                 full_obs_dict[key].update(data_dict[key])
