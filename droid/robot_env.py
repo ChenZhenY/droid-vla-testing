@@ -1,4 +1,5 @@
 from copy import deepcopy
+import time
 
 import gym
 import numpy as np
@@ -62,7 +63,7 @@ class RobotEnv(gym.Env):
         # Return Action Info
         return action_info
 
-    def reset(self, randomize=False):
+    def reset(self, randomize=False, do_it_slowly=True):
         self._robot.update_gripper(0, velocity=False, blocking=True)
 
         if randomize:
@@ -70,7 +71,27 @@ class RobotEnv(gym.Env):
         else:
             noise = None
 
-        self._robot.update_joints(self.reset_joints, velocity=False, blocking=False, cartesian_noise=noise)
+        print(f"#### Enter Reset with do it slow = {do_it_slowly} ####")
+
+        start_state = self._robot.get_joint_positions() # will be a list of of 7
+        start_state = np.array(start_state)
+
+        # added by Zhenyang, the original one is doing like crazy
+        if do_it_slowly:
+            import time
+            # TODO: tune this value
+            step_num = 4
+            delta = self.reset_joints - start_state 
+            for i in range(step_num):
+                target_state = start_state + i/step_num * delta
+                # print(f"Reset step {i+1}/{step_num}, target state: {target_state}")
+                # print("Current joint state:", self._robot.get_joint_positions())
+                self._robot.update_joints(target_state, velocity=False, blocking=True, cartesian_noise=noise)
+                time.sleep(0.5)
+
+        else:
+            # default reset
+            self._robot.update_joints(self.reset_joints, velocity=False, blocking=True, cartesian_noise=noise)
 
     def update_robot(self, action, action_space="cartesian_velocity", gripper_action_space=None, blocking=False):
         action_info = self._robot.update_command(
