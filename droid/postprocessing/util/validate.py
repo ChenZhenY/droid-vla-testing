@@ -38,22 +38,47 @@ def validate_day_dir(day_dir: Path) -> bool:
     return True
 
 
+# def validate_svo_existence(trajectory_dir: Path) -> bool:
+#     svo_path = trajectory_dir / "recordings" / "SVO"
+#     if svo_path.exists() and (len([p for p in svo_path.iterdir() if p.name.endswith(".svo")]) == 3):
+#         return True
+
+#     # Check Common Failure Mode --> files at `trajectory_dir / recordings / *.svo`
+#     fallback_svo_path = trajectory_dir / "recordings"
+#     if fallback_svo_path.exists() and (len([p for p in fallback_svo_path.iterdir() if p.name.endswith(".svo")]) == 3):
+#         os.makedirs(svo_path, exist_ok=False)
+#         svo_files = list([p for p in fallback_svo_path.iterdir() if p.name.endswith(".svo")])
+#         for file in svo_files:
+#             shutil.move(file, svo_path / file.name)
+#         return len([p for p in svo_path.iterdir() if p.name.endswith(".svo")]) == 3
+
+#     return False
+
 def validate_svo_existence(trajectory_dir: Path) -> bool:
     svo_path = trajectory_dir / "recordings" / "SVO"
-    if svo_path.exists() and (len([p for p in svo_path.iterdir() if p.name.endswith(".svo")]) == 3):
-        return True
+    exts = (".svo", ".svo2")
 
-    # Check Common Failure Mode --> files at `trajectory_dir / recordings / *.svo`
+    def is_svo_file(p: Path) -> bool:
+        return p.is_file() and p.name.lower().endswith(exts)
+
+    # Preferred location: recordings/SVO
+    if svo_path.exists():
+        files = [p for p in svo_path.iterdir() if is_svo_file(p)]
+        if len(files) == 3 or len(files) == 2: # number of cameras may vary
+            return True
+
+    # Common failure mode: recordings/*.svo(.2)
     fallback_svo_path = trajectory_dir / "recordings"
-    if fallback_svo_path.exists() and (len([p for p in fallback_svo_path.iterdir() if p.name.endswith(".svo")]) == 3):
-        os.makedirs(svo_path, exist_ok=False)
-        svo_files = list([p for p in fallback_svo_path.iterdir() if p.name.endswith(".svo")])
-        for file in svo_files:
-            shutil.move(file, svo_path / file.name)
-        return len([p for p in svo_path.iterdir() if p.name.endswith(".svo")]) == 3
+    if fallback_svo_path.exists():
+        fallback_files = [p for p in fallback_svo_path.iterdir() if is_svo_file(p)]
+        if len(fallback_files) == 3 or len(fallback_files) == 2: # number of cameras may vary
+            os.makedirs(svo_path, exist_ok=True)
+            for file in fallback_files:
+                shutil.move(str(file), str(svo_path / file.name))
+            # Re-check after move
+            return len([p for p in svo_path.iterdir() if is_svo_file(p)]) == 3 or len([p for p in svo_path.iterdir() if is_svo_file(p)]) == 2
 
     return False
-
 
 # === Metadata Record Validator ===
 def validate_metadata_record(metadata_record: Dict) -> bool:

@@ -41,6 +41,8 @@ class RobotEnv(gym.Env):
         # Create Cameras
         self.camera_reader = MultiCameraWrapper(camera_kwargs)
         self.calibration_dict = load_calibration_info()
+        # TODO: HACK
+        # breakpoint()
         self.camera_type_dict = camera_type_dict
 
         # Reset Robot

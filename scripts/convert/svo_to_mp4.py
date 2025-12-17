@@ -33,6 +33,7 @@ from droid.postprocessing.util.validate import validate_user2id
 REGISTERED_MEMBERS: Dict[str, Dict[str, str]] = {
     "Lab Name": {
         "First Last": "4b1a56cc",
+        "RL2": "92f0f2ff"
     },
 }
 validate_user2id(REGISTERED_MEMBERS)
@@ -45,6 +46,7 @@ REGISTERED_ALIASES: Dict[str, Tuple[str, str]] = {
     # Note: Add duplicates/typos below (follow format)!
     **{
         "First Last": ("Lab Name", "First Last"),
+        "Zhenyang Chen": ("Lab Name", "RL2"),
     }
 }
 # fmt: on
@@ -54,7 +56,7 @@ class DROIDConversionConfig:
     # fmt: off
     lab: str                                        # Lab ID (all uppercase) -- e.g., "CLVR", "ILIAD", "REAL"
     data_dir: Path = Path("data")                   # Path to top-level directory, if lab_agnostic=False it should contain "success"/"failure" directories
-    lab_agnostic: bool = True                       # Determines whether to only convert your lab's data or all data
+    lab_agnostic: bool = False                       # Determines whether to only convert your lab's data or all data
 
     # Stage Handling
     do_index: bool = True                           # Whether to run an initial indexing pass prior to processing stage

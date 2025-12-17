@@ -11,7 +11,7 @@ import numpy as np
 from droid.misc.subprocess_utils import run_threaded_command
 
 
-def write_dict_to_hdf5(hdf5_file, data_dict, keys_to_ignore=["image", "depth", "pointcloud"]):
+def write_dict_to_hdf5(hdf5_file, data_dict, keys_to_ignore=["image", "depth", "pointcloud", '']):
     for key in data_dict.keys():
         # Pass Over Specified Keys #
         if key in keys_to_ignore:

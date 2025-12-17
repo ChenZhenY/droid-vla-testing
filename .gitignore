@@ -2,3 +2,9 @@
 videos/
 results/
 record_files/
+data/
+cache/
+
+**/__pycache__/
+*.py[cod]
+*$py.class

@@ -43,7 +43,7 @@ class Args:
     )
 
     # Rollout parameters
-    max_timesteps: int = 300
+    max_timesteps: int = 800
     # How many actions to execute from a predicted action chunk before querying policy server again
     # 8 is usually a good default (equals 0.5 seconds of action execution).
     open_loop_horizon: int = 8
@@ -68,7 +68,7 @@ def draw_prompt_overlay(
     panel_pos: str = "top",          # "top" or "bottom"
     max_width_ratio: float = 0.90,   # fraction of image width usable for text
     font=cv2.FONT_HERSHEY_SIMPLEX,
-    font_scale: float = 0.7,
+    font_scale: float = 2.8,
     thickness: int = 2,
     line_spacing: float = 1.35,
     pad: int = 12,
@@ -221,6 +221,7 @@ def main(args: Args):
 
     while True:
         instruction = None
+        instruction_prev = None
         while instruction is None:
             instruction = input("Enter instruction: ")
             if instruction == 'reset':
@@ -246,6 +247,13 @@ def main(args: Args):
                 # instruction = maybe_update_instruction(instruction)
                 instruction = poll_for_prompt_update(instruction)
 
+                # clean action buffer when instruction changes
+                if instruction != instruction_prev:
+                    instruction_prev = instruction
+                    actions_from_chunk_completed = 0
+                    pred_action_chunk = None
+                    # print(f"[info] Instruction changed to: {instruction} prev instruction: {instruction_prev}")
+
                 if instruction == "reset":
                     env.reset()
                     time.sleep(1.0)
@@ -259,7 +267,9 @@ def main(args: Args):
                     save_to_disk=t_step == 0,
                 )
 
-                frame = curr_obs[f"{args.external_camera}_image"]  # BGR uint8 assumed
+                left_frame = curr_obs[f"{args.external_camera}_image"]  # BGR uint8 assumed
+                wrist_frame = curr_obs["wrist_image"]
+                frame = np.concatenate([left_frame, wrist_frame], axis=1)
                 frame = draw_prompt_overlay(frame, instruction, panel_pos="top", alpha=0.55)
                 video.append(frame)
 
@@ -319,6 +329,8 @@ def main(args: Args):
 
                 # print(f"action is {action}")
                 env.step(action)
+
+                instruction_prev = instruction
 
                 # Sleep to match DROID data collection frequency
                 elapsed_time = time.time() - start_time

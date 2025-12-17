@@ -45,6 +45,7 @@ class DataCollecter:
         if not os.path.isdir(self.failure_logdir):
             os.makedirs(self.failure_logdir)
         self.save_data = save_data
+        self.warned_missing_cameras = False
 
     def reset_robot(self, randomize=False):
         self.env._robot.establish_connection()
@@ -82,8 +83,23 @@ class DataCollecter:
             save_filepath = None
             recording_folderpath = None
         else:
-            if len(self.full_cam_ids) != 6:
-                raise ValueError("WARNING: User is trying to collect data without all three cameras running!")
+            # Refresh camera streams so we adapt to setups with fewer cameras
+            _, current_cam_ids = self.get_camera_feed()
+            if len(current_cam_ids) == 0:
+                raise ValueError("No camera feeds detected; cannot record a trajectory.")
+            if set(current_cam_ids) != set(self.full_cam_ids):
+                print(
+                    "WARNING: Camera feed changed since initialization; proceeding with currently available streams: "
+                    f"{current_cam_ids}"
+                )
+                self.full_cam_ids = current_cam_ids
+                self.num_cameras = len(current_cam_ids)
+            if (len(self.cam_ids) < 3) and (not self.warned_missing_cameras):
+                print(
+                    f"WARNING: Only {len(self.cam_ids)} camera(s) detected. "
+                    f"Trajectories will store {len(self.full_cam_ids)} image streams."
+                )
+                self.warned_missing_cameras = True
             save_filepath = os.path.join(self.failure_logdir, info["time"], "trajectory.h5")
             recording_folderpath = os.path.join(self.failure_logdir, info["time"], "recordings")
             if not os.path.isdir(recording_folderpath):

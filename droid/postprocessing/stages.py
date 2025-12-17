@@ -140,8 +140,8 @@ def run_processing(
                 continue
 
             trajectory_dir = data_dir / rel_trajectory_dir
-            
             existing_metadata_found = False
+
             if search_existing_metadata:
                 metadata = parse_existing_metadata(trajectory_dir)
                 if metadata is not None:
