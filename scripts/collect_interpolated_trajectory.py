@@ -7,11 +7,17 @@ This script:
 3. Interpolates between the two coordinates to generate a trajectory
 4. Wraps the trajectory as a policy and commands the robot accordingly
 5. Saves the trajectory in the same HDF5 format
+
+Things to test:
+1. Replay with Cartesian position 6D pose
+2. Interpoaltion output (dry run)
+3. Test full pipeline and whether the controller works
 """
 
 import argparse
 import os
 import numpy as np
+import time
 
 from droid.robot_env import RobotEnv
 from droid.trajectory_utils.trajectory_reader import TrajectoryReader
@@ -177,10 +183,10 @@ def main():
         help="Number of interpolation steps (default: 100)",
     )
     parser.add_argument(
-        "--output_file",
+        "--output_dir",
         type=str,
         required=True,
-        help="Path to output HDF5 file for saving the collected trajectory",
+        help="Path to output directory for saving the collected trajectory",
     )
     parser.add_argument(
         "--action_space",
@@ -244,25 +250,34 @@ def main():
 
     # Collect trajectory
     print(f"Collecting trajectory with {args.num_steps} steps...")
-    print(f"Output will be saved to: {args.output_file}")
+    print(f"Output will be saved to: {args.output_dir}")
 
     # Ensure output directory exists
-    output_dir = os.path.dirname(args.output_file)
-    if output_dir and not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    if args.output_dir and not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir)
+    recording_folderpath = os.path.join(args.output_dir, "recordings")
+    save_filepath = os.path.join(args.output_dir, "trajectory.h5")
 
+    # move the robot to initial position before collecting
+    print("Moving robot to initial position...")
+    init_action = np.concatenate([cartesian1, [gripper1]])
+    env.step(init_action, action_space=args.action_space, gripper_action_space=args.gripper_action_space, blocking=True)
+
+    time.sleep(1.0)  # wait for a moment
+    print(f"Starting Trajectory Collection...")
+    # NOTE: save_images=True will bug out
     controller_info = collect_trajectory(
         env=env,
         policy=policy,
         horizon=args.num_steps,
-        save_filepath=args.output_file,
+        save_filepath=save_filepath,
         metadata=metadata,
-        save_images=True,
-        reset_robot=True,
+        recording_folderpath=recording_folderpath,
+        reset_robot=False,
     )
 
     print("Trajectory collection complete!")
-    print(f"Saved to: {args.output_file}")
+    print(f"Saved to: {args.output_dir}")
 
 
 if __name__ == "__main__":

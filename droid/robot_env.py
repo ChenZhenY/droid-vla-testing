@@ -84,7 +84,7 @@ class RobotEnv(gym.Env):
         # added by Zhenyang, the original one is doing like crazy
         if do_it_slowly:
             import time
-            # TODO: tune this value
+            # NOTE: tune this value
             step_num = 4
             delta = self.reset_joints - start_state 
             for i in range(step_num):

@@ -1,6 +1,8 @@
 from droid.trajectory_utils.misc import visualize_trajectory
 
-trajectory_folderpath = "/home/sasha/DROID/data/success/2023-03-10/Fri_Mar_10_13:05:35_2023"
+# trajectory_folderpath = "/home/sasha/DROID/data/success/2023-03-10/Fri_Mar_10_13:05:35_2023"
+
+trajectory_folderpath = "/mnt/data2/droid/droid/data/success/2025-12-24/Wed_Dec_24_17:40:19_2025"
 
 camera_kwargs = dict(
     hand_camera=dict(image=True, resolution=(0, 0)),
