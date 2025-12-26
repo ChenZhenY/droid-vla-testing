@@ -37,7 +37,7 @@ def collect_trajectory(
     - Otherwise, we will end the trajectory when the controller tells us to
     - If you need a pointer to the current observation, pass a dictionary in for obs_pointer
     """
-
+    
     # Check Parameters #
     assert (controller is not None) or (policy is not None)
     assert (controller is not None) or (horizon is not None)

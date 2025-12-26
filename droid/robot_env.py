@@ -26,8 +26,11 @@ class RobotEnv(gym.Env):
 
         # Robot Configuration
         self.reset_joints = np.array([0, -1 / 5 * np.pi, 0, -4 / 5 * np.pi, 0, 3 / 5 * np.pi, 0.0])
-        self.randomize_low = np.array([-0.1, -0.2, -0.1, -0.3, -0.3, -0.3])
-        self.randomize_high = np.array([0.1, 0.2, 0.1, 0.3, 0.3, 0.3])
+        # self.randomize_low = np.array([-0.1, -0.2, -0.1, -0.3, -0.3, -0.3])
+        # self.randomize_high = np.array([0.1, 0.2, 0.1, 0.3, 0.3, 0.3])
+        # Scale to 1/10 of the original noise
+        self.randomize_low = np.array([-0.01, -0.02, -0.01, -0.03, -0.03, -0.03])
+        self.randomize_high = np.array([0.01, 0.02, 0.01, 0.03, 0.03, 0.03])
         self.DoF = 7 if ("cartesian" in action_space) else 8
         self.control_hz = 15
 

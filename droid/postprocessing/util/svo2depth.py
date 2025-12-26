@@ -29,10 +29,15 @@ def export_depth(
     depth_out = depth_dir / f"{svo_file.stem}"
     os.makedirs(depth_out, exist_ok=True)
     sdk_version, use_sdk_4 = sl.Camera().get_sdk_version(), None
-    if not (sdk_version.startswith("4.0") or sdk_version.startswith("3.8")):
-        raise ValueError("Function `export_mp4` only supports ZED SDK 3.8 OR 4.0; if you see this, contact Sidd!")
-    else:
-        use_sdk_4 = sdk_version.startswith("4.0")
+    
+    use_sdk_4 = sdk_version.startswith("4.")
+    if not (use_sdk_4 or sdk_version.startswith("3.8")):
+        raise ValueError("export_mp4 supports ZED SDK 3.8.* or 4.* (including 4.2.5)")
+    
+    # if not (sdk_version.startswith("4.0") or sdk_version.startswith("3.8")):
+    #     raise ValueError("Function `export_mp4` only supports ZED SDK 3.8 OR 4.0; if you see this, contact Sidd!")
+    # else:
+    #     use_sdk_4 = sdk_version.startswith("4.0")
 
     # Configure PyZED --> set mostly from SVO Path, don't convert in realtime!
     initial_parameters = sl.InitParameters()
@@ -75,7 +80,9 @@ def export_depth(
             should_extract = svo_position % frequency == 0
             if should_extract:
                 zed.retrieve_measure(img_container, depth_measure, resolution=depth_resolution)
+                processed_depth_32 = (img_container.get_data() * 1000).astype(np.uint32)
                 processed_depth = (img_container.get_data() * 1000).astype(np.uint16)
+                np.save(depth_out / '{0}.npy'.format(svo_position), processed_depth_32)
                 imageio.imwrite(depth_out / '{0}.png'.format(svo_position), processed_depth)
 
             # Update Progress

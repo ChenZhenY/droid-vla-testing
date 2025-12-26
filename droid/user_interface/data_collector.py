@@ -117,6 +117,7 @@ class DataCollecter:
             reset_robot=reset_robot,
             recording_folderpath=recording_folderpath,
             save_filepath=save_filepath,
+            randomize_reset=False,
             wait_for_controller=True,
         )
         self.traj_running = False
