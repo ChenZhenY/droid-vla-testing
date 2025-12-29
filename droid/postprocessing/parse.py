@@ -14,7 +14,7 @@ import h5py
 import json
 
 from droid.postprocessing.schema import TRAJECTORY_SCHEMA
-
+from droid.misc.parameters import varied_camera_1_id, varied_camera_2_id
 
 def parse_datetime(date_str: str, mode="day") -> datetime:
     if mode == "day":
@@ -104,13 +104,28 @@ def parse_trajectory(
 
             # Extract Camera Information
             camera_types, camera_extrinsics = h5["observation"]["camera_type"], h5["observation"]["camera_extrinsics"]
-            ctype2extrinsics = {
-                "wrist" if camera_types[serial][0] == 0 else exts.pop(0): {
-                    "serial": serial,
-                    "extrinsics": camera_extrinsics[f"{serial}_left"][0],
+            ctype2extrinsics = {}
+            for serial in sorted(camera_types.keys()):
+                # Ensure serial is a string for comparison
+                serial_str = str(serial) if not isinstance(serial, str) else serial
+                
+                if camera_types[serial][0] == 0:
+                    # Wrist camera
+                    camera_type = "wrist"
+                elif serial_str == varied_camera_1_id:
+                    # Left exterior camera (varied_camera_1) -> ext1
+                    camera_type = "ext1"
+                elif serial_str == varied_camera_2_id:
+                    # Right exterior camera (varied_camera_2) -> ext2
+                    camera_type = "ext2"
+                else:
+                    # Fallback: assign ext1/ext2 based on remaining exts list
+                    camera_type = exts.pop(0) if exts else "ext1"
+                
+                ctype2extrinsics[camera_type] = {
+                    "serial": serial_str,
+                    "extrinsics": camera_extrinsics[f"{serial_str}_left"][0],
                 }
-                for serial in sorted(camera_types.keys())
-            }
 
             # Compute Relative Path to `trajectory.h5`
             hdf5_path = str(trajectory_dir.relative_to(data_dir) / "trajectory.h5")

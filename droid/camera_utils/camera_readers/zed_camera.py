@@ -46,6 +46,9 @@ class ZedCamera:
         self.current_mode = None
         self._current_params = None
         self._extriniscs = {}
+        
+        # Custom camera settings to apply after opening
+        self._custom_settings = {}
 
         # Open Camera #
         print("Opening Zed: ", self.serial_number)
@@ -135,6 +138,14 @@ class ZedCamera:
         status = self._cam.open(sl_params)
         if status != sl.ERROR_CODE.SUCCESS:
             raise RuntimeError("Camera Failed To Open")
+
+        # Apply custom camera settings (must be done AFTER camera is opened)
+        for setting, value in self._custom_settings.items():
+            self._cam.set_camera_settings(setting, value)
+            
+        # Print confirmation if custom settings were applied
+        if self._custom_settings:
+            print(f"Applied custom settings to camera {self.serial_number}: {self._custom_settings}")
 
         # Save Intrinsics #
         self.latency = int(2.5 * (1e3 / sl_params.camera_fps))
@@ -227,3 +238,37 @@ class ZedCamera:
 
     def is_running(self):
         return self.current_mode != "disabled"
+
+    def get_camera_settings(self, setting):
+        """Get a camera setting value."""
+        if not hasattr(self, "_cam"):
+            return None
+        return self._cam.get_camera_settings(setting)
+
+    def set_camera_settings(self, setting, value):
+        """Set a camera setting value (temporary, will be lost on reconfiguration)."""
+        if not hasattr(self, "_cam"):
+            return
+        self._cam.set_camera_settings(setting, value)
+    
+    def configure_persistent_settings(self, settings_dict):
+        """
+        Configure camera settings that will persist across camera reconfigurations.
+        
+        Args:
+            settings_dict: Dictionary of {sl.VIDEO_SETTINGS: value} pairs
+        
+        Example:
+            import pyzed.sl as sl
+            cam.configure_persistent_settings({
+                sl.VIDEO_SETTINGS.AEC_AGC: 0,      # Disable auto-exposure
+                sl.VIDEO_SETTINGS.EXPOSURE: 60,    # Set manual exposure
+            })
+        """
+        self._custom_settings.update(settings_dict)
+        
+        # Apply immediately if camera is already open
+        if hasattr(self, "_cam"):
+            for setting, value in settings_dict.items():
+                self._cam.set_camera_settings(setting, value)
+            print(f"Applied persistent settings to camera {self.serial_number}: {settings_dict}")
