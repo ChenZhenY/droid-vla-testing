@@ -1,6 +1,6 @@
 ################ Get the ckpt #################
 CONFIG_NAME=pi05_droid_finetune
-CKPT_NAME=pi05_DROID_whitebowl_noops_1228
+CKPT_NAME=pi05_DROID_4tasks_1228
 EPOCH=9999
 
 # # downloaded from scratch folder

@@ -19,10 +19,11 @@ import os
 import numpy as np
 import time
 import json
+import yaml
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from dataclasses import dataclass
 import tyro
 
@@ -35,19 +36,22 @@ from droid.misc.transformations import euler_to_quat, quat_to_euler
 class Args:
     """Collect trajectory by interpolating between two states from two HDF5 files."""
 
-    traj1_file: Path
+    config_file: Optional[Path] = None
+    """Path to YAML config file for batch trajectory collection. If provided, other args are ignored."""
+
+    traj1_file: Optional[Path] = None
     """Path to first trajectory HDF5 file."""
 
-    traj2_file: Path
+    traj2_file: Optional[Path] = None
     """Path to second trajectory HDF5 file."""
 
-    state1_index: int
+    state1_index: Optional[int] = None
     """Index of state to read from first trajectory (0-based)."""
 
-    state2_index: int
+    state2_index: Optional[int] = None
     """Index of state to read from second trajectory (0-based)."""
     
-    output_dir: Path
+    output_dir: Optional[Path] = None
     """Path to output directory for saving the collected trajectory, following DROID structure with output_dir/success/<date>/<folder_stamp>/"""
 
     num_steps: int = 100
@@ -332,48 +336,74 @@ def save_metadata_json_with_current_time(
 
     return out_path
 
-def main():
-    args = tyro.cli(Args)
-
-    # Collect trajectory
-    print(f"Collecting trajectory with {args.num_steps} steps...")
-    print(f"Output will be saved to: {args.output_dir}")
+def collect_single_trajectory(
+    traj1_file: Path,
+    traj2_file: Path,
+    state1_index: int,
+    state2_index: int,
+    output_dir: Path,
+    num_steps: int,
+    action_space: str,
+    gripper_action_space: str,
+    trajectory_name: Optional[str] = None,
+) -> Path:
+    """
+    Collect a single interpolated trajectory between two states.
+    
+    Args:
+        traj1_file: Path to first trajectory HDF5 file
+        traj2_file: Path to second trajectory HDF5 file
+        state1_index: Index of state to read from first trajectory (0-based)
+        state2_index: Index of state to read from second trajectory (0-based)
+        output_dir: Base output directory for saving trajectories
+        num_steps: Number of interpolation steps
+        action_space: Action space for robot control
+        gripper_action_space: Gripper action space
+        trajectory_name: Optional name for the trajectory (for logging)
+    
+    Returns:
+        Path to the saved trajectory directory
+    """
+    name_prefix = f"[{trajectory_name}] " if trajectory_name else ""
+    
+    print(f"{name_prefix}Collecting trajectory with {num_steps} steps...")
+    print(f"{name_prefix}Output will be saved to: {output_dir}")
 
     # create the output directory following DROID if it does not exist
     now = datetime.now()
     new_date = now.strftime("%Y-%m-%d")
     new_timestamp = now.strftime("%Y-%m-%d-%Hh-%Mm-%Ss")
     new_folder_stamp = now.strftime("%a_%b_%d_%H:%M:%S_%Y")
-    output_dir = os.path.join(args.output_dir, "success", new_date, new_folder_stamp)
-    if output_dir and not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    recording_folderpath = os.path.join(output_dir, "recordings")
-    save_filepath = os.path.join(output_dir, "trajectory.h5")
+    trajectory_output_dir = os.path.join(output_dir, "success", new_date, new_folder_stamp)
+    if trajectory_output_dir and not os.path.exists(trajectory_output_dir):
+        os.makedirs(trajectory_output_dir)
+    recording_folderpath = os.path.join(trajectory_output_dir, "recordings")
+    save_filepath = os.path.join(trajectory_output_dir, "trajectory.h5")
 
     # Read states from trajectory files
-    print(f"Reading state {args.state1_index} from {args.traj1_file}...")
-    state1 = read_state_from_trajectory(args.traj1_file, args.state1_index)
+    print(f"{name_prefix}Reading state {state1_index} from {traj1_file}...")
+    state1 = read_state_from_trajectory(traj1_file, state1_index)
 
-    print(f"Reading state {args.state2_index} from {args.traj2_file}...")
-    state2 = read_state_from_trajectory(args.traj2_file, args.state2_index)
+    print(f"{name_prefix}Reading state {state2_index} from {traj2_file}...")
+    state2 = read_state_from_trajectory(traj2_file, state2_index)
 
     # Save updated metadata JSON
-    traj1_folder = os.path.dirname(args.traj1_file)
+    traj1_folder = os.path.dirname(traj1_file)
     json_files1 = sorted(Path(traj1_folder).expanduser().rglob("*.json"))
     meta = json.load(open(json_files1[0], "r"))
     start_task = meta.get("current_task", "unknown task")
 
-    traj2_folder = os.path.dirname(args.traj2_file)
+    traj2_folder = os.path.dirname(traj2_file)
     json_files2 = sorted(Path(traj2_folder).expanduser().rglob("*.json"))
     meta2 = json.load(open(json_files2[0], "r"))
     target_task = meta2.get("current_task", "unknown task")
     save_metadata_json_with_current_time(
         metadata_template=meta,
-        out_dir=output_dir,
+        out_dir=trajectory_output_dir,
         start_task=start_task,
-        start_step=args.state1_index,
+        start_step=state1_index,
         current_task=target_task,
-        current_step=args.state2_index,
+        current_step=state2_index,
         now=now,
     )
 
@@ -384,8 +414,8 @@ def main():
     cartesian2 = np.array(state2["observation"]["robot_state"]["cartesian_position"])
     gripper2 = state2["observation"]["robot_state"]["gripper_position"]
 
-    print(f"State 1 - Cartesian: {cartesian1}, Gripper: {gripper1}")
-    print(f"State 2 - Cartesian: {cartesian2}, Gripper: {gripper2}")
+    print(f"{name_prefix}State 1 - Cartesian: {cartesian1}, Gripper: {gripper1}")
+    print(f"{name_prefix}State 2 - Cartesian: {cartesian2}, Gripper: {gripper2}")
 
     # Create interpolation policy
     policy = InterpolationPolicy(
@@ -393,45 +423,212 @@ def main():
         end_cartesian=cartesian2,
         start_gripper=gripper1,
         end_gripper=gripper2,
-        num_steps=args.num_steps,
+        num_steps=num_steps,
     )
 
     # Create robot environment
-    print("Initializing robot environment...")
+    print(f"{name_prefix}Initializing robot environment...")
     env = RobotEnv(
-        action_space=args.action_space,
-        gripper_action_space=args.gripper_action_space,
+        action_space=action_space,
+        gripper_action_space=gripper_action_space,
     )
 
-    # Prepare metadata
-    # metadata = {
-    #     "traj1_file": args.traj1_file,
-    #     "traj2_file": args.traj2_file,
-    #     "state1_index": args.state1_index,
-    #     "state2_index": args.state2_index,
-    #     "num_steps": args.num_steps,
-    #     "interpolation_type": "linear_position_slerp_orientation",
-    # }
-
     # move the robot to initial position before collecting
-    print("Moving robot to initial position...")
+    print(f"{name_prefix}Moving robot to initial position...")
     current_state, _ = env.get_state()
     go_to_state(env, current_state, cartesian1, gripper1)
 
     time.sleep(1.0)  # wait for a moment
-    print(f"Starting Trajectory Collection...")
+    print(f"{name_prefix}Starting Trajectory Collection...")
     # NOTE: save_images=True will bug out
     controller_info = collect_trajectory(
         env=env,
         policy=policy,
-        horizon=args.num_steps,
+        horizon=num_steps,
         save_filepath=save_filepath,
         recording_folderpath=recording_folderpath,
         reset_robot=False,
     )
 
-    print("Trajectory collection complete!")
-    print(f"Saved to: {args.output_dir}")
+    print(f"{name_prefix}Trajectory collection complete!")
+    print(f"{name_prefix}Saved to: {trajectory_output_dir}")
+    
+    return Path(trajectory_output_dir)
+
+def load_batch_config(config_file: Path) -> Dict[str, Any]:
+    """
+    Load and validate batch trajectory collection config from YAML file.
+    
+    Args:
+        config_file: Path to YAML config file
+    
+    Returns:
+        Dictionary containing validated config data
+    
+    Raises:
+        FileNotFoundError: If config file doesn't exist
+        ValueError: If config structure is invalid
+    """
+    if not config_file.exists():
+        raise FileNotFoundError(f"Config file not found: {config_file}")
+    
+    with open(config_file, 'r') as f:
+        config = yaml.safe_load(f)
+    
+    if not isinstance(config, dict):
+        raise ValueError("Config file must contain a dictionary")
+    
+    # Validate required fields
+    if "output_dir" not in config:
+        raise ValueError("Config must contain 'output_dir' field")
+    
+    if "trajectories" not in config:
+        raise ValueError("Config must contain 'trajectories' list")
+    
+    if not isinstance(config["trajectories"], list):
+        raise ValueError("'trajectories' must be a list")
+    
+    if len(config["trajectories"]) == 0:
+        raise ValueError("'trajectories' list cannot be empty")
+    
+    # Validate each trajectory entry
+    required_traj_fields = ["traj1_file", "traj2_file", "state1_index", "state2_index"]
+    for i, traj in enumerate(config["trajectories"]):
+        if not isinstance(traj, dict):
+            raise ValueError(f"Trajectory {i} must be a dictionary")
+        
+        for field in required_traj_fields:
+            if field not in traj:
+                raise ValueError(f"Trajectory {i} missing required field: {field}")
+        
+        # Convert paths to Path objects
+        traj["traj1_file"] = Path(traj["traj1_file"])
+        traj["traj2_file"] = Path(traj["traj2_file"])
+        
+        # Validate files exist
+        if not traj["traj1_file"].exists():
+            raise FileNotFoundError(f"Trajectory {i}: traj1_file not found: {traj['traj1_file']}")
+        if not traj["traj2_file"].exists():
+            raise FileNotFoundError(f"Trajectory {i}: traj2_file not found: {traj['traj2_file']}")
+    
+    # Set defaults for optional fields
+    if "num_steps" not in config:
+        config["num_steps"] = 100
+    if "action_space" not in config:
+        config["action_space"] = "cartesian_position"
+    if "gripper_action_space" not in config:
+        config["gripper_action_space"] = "position"
+    
+    # Convert output_dir to Path
+    config["output_dir"] = Path(config["output_dir"])
+    
+    return config
+
+def collect_batch_trajectories(config: Dict[str, Any]) -> None:
+    """
+    Collect multiple trajectories from a batch config.
+    
+    Args:
+        config: Validated batch config dictionary
+    """
+    trajectories = config["trajectories"]
+    output_dir = config["output_dir"]
+    global_num_steps = config["num_steps"]
+    global_action_space = config["action_space"]
+    global_gripper_action_space = config["gripper_action_space"]
+    
+    print(f"Found {len(trajectories)} trajectories to collect")
+    print(f"Output directory: {output_dir}")
+    print(f"Global settings: num_steps={global_num_steps}, action_space={global_action_space}, gripper_action_space={global_gripper_action_space}")
+    
+    successful = []
+    failed = []
+    
+    for idx, traj_config in enumerate(trajectories, 1):
+        traj_name = traj_config.get("name", f"trajectory_{idx}")
+        print(f"\n{'='*60}")
+        print(f"Collecting trajectory {idx}/{len(trajectories)}: {traj_name}")
+        print(f"{'='*60}")
+        
+        try:
+            num_steps = traj_config.get("num_steps", global_num_steps)
+            action_space = traj_config.get("action_space", global_action_space)
+            gripper_action_space = traj_config.get("gripper_action_space", global_gripper_action_space)
+            
+            output_path = collect_single_trajectory(
+                traj1_file=traj_config["traj1_file"],
+                traj2_file=traj_config["traj2_file"],
+                state1_index=traj_config["state1_index"],
+                state2_index=traj_config["state2_index"],
+                output_dir=output_dir,
+                num_steps=num_steps,
+                action_space=action_space,
+                gripper_action_space=gripper_action_space,
+                trajectory_name=traj_name,
+            )
+            successful.append((traj_name, output_path))
+            print(f"✓ Successfully collected: {traj_name}")
+            
+        except Exception as e:
+            print(f"✗ Failed to collect {traj_name}: {str(e)}")
+            failed.append((traj_name, str(e)))
+            continue
+    
+    # Print summary
+    print(f"\n{'='*60}")
+    print("BATCH COLLECTION SUMMARY")
+    print(f"{'='*60}")
+    print(f"Total trajectories: {len(trajectories)}")
+    print(f"Successful: {len(successful)}")
+    print(f"Failed: {len(failed)}")
+    
+    if successful:
+        print(f"\nSuccessful trajectories:")
+        for name, path in successful:
+            print(f"  ✓ {name} -> {path}")
+    
+    if failed:
+        print(f"\nFailed trajectories:")
+        for name, error in failed:
+            print(f"  ✗ {name}: {error}")
+    
+    print(f"\nAll trajectories saved to: {output_dir}")
+
+def main():
+    args = tyro.cli(Args)
+
+    if args.config_file is not None:
+        # Batch mode: load config and collect multiple trajectories
+        print(f"Loading batch config from: {args.config_file}")
+        config = load_batch_config(args.config_file)
+        collect_batch_trajectories(config)
+    else:
+        # Single trajectory mode: use CLI args (backward compatible)
+        required_fields = {
+            "traj1_file": args.traj1_file,
+            "traj2_file": args.traj2_file,
+            "state1_index": args.state1_index,
+            "state2_index": args.state2_index,
+            "output_dir": args.output_dir,
+        }
+        
+        missing = [field for field, value in required_fields.items() if value is None]
+        if missing:
+            missing_args = ', '.join(f'--{field.replace("_", "-")}' for field in missing)
+            raise ValueError(
+                f"When not using --config-file, all of the following must be provided: {missing_args}"
+            )
+        
+        collect_single_trajectory(
+            traj1_file=args.traj1_file,
+            traj2_file=args.traj2_file,
+            state1_index=args.state1_index,
+            state2_index=args.state2_index,
+            output_dir=args.output_dir,
+            num_steps=args.num_steps,
+            action_space=args.action_space,
+            gripper_action_space=args.gripper_action_space,
+        )
 
 
 if __name__ == "__main__":

@@ -340,7 +340,10 @@ def main(args: Args):
                 break
 
         video = np.stack(video)
-        save_filename = "videos/video_" + timestamp
+        date = datetime.datetime.now().strftime("%Y_%m_%d")
+        save_filename = f"videos/{date}/{timestamp}_{instruction}.mp4"
+        if not os.path.exists(f"videos/{date}"):
+            os.makedirs(f"videos/{date}")
         ImageSequenceClip(list(video), fps=10).write_videofile(save_filename + ".mp4", codec="libx264")
 
         ### Save all data ###
