@@ -54,6 +54,9 @@ class Args:
     output_dir: Optional[Path] = None
     """Path to output directory for saving the collected trajectory, following DROID structure with output_dir/success/<date>/<folder_stamp>/"""
 
+    step_delta: Optional[float] = 0.25 # m
+    """Step size for interpolation (default: 0.25 meters). This will disable the num_steps parameter."""
+
     num_steps: int = 100
     """Number of interpolation steps (default: 100)."""
 
@@ -229,7 +232,7 @@ def go_to_state(env, current_state, target_cartesian, target_gripper,
     if final_delta < delta_threshold:
         return True
     else:
-        print("Failed to reach target state within threshold.")
+        print("\033[91mFailed to reach target state within threshold.\033[0m")
         return False
 
 def save_metadata_json_with_current_time(
@@ -337,6 +340,7 @@ def save_metadata_json_with_current_time(
     return out_path
 
 def collect_single_trajectory(
+    env: RobotEnv,
     traj1_file: Path,
     traj2_file: Path,
     state1_index: int,
@@ -346,6 +350,7 @@ def collect_single_trajectory(
     action_space: str,
     gripper_action_space: str,
     trajectory_name: Optional[str] = None,
+    step_delta: Optional[float] = None,
 ) -> Path:
     """
     Collect a single interpolated trajectory between two states.
@@ -356,42 +361,63 @@ def collect_single_trajectory(
         state1_index: Index of state to read from first trajectory (0-based)
         state2_index: Index of state to read from second trajectory (0-based)
         output_dir: Base output directory for saving trajectories
-        num_steps: Number of interpolation steps
+        num_steps: Number of interpolation steps (used if step_delta is None)
         action_space: Action space for robot control
         gripper_action_space: Gripper action space
         trajectory_name: Optional name for the trajectory (for logging)
+        step_delta: Step size for interpolation in meters. If provided, num_steps will be calculated from the distance between states.
     
     Returns:
         Path to the saved trajectory directory
     """
     name_prefix = f"[{trajectory_name}] " if trajectory_name else ""
-    
-    print(f"{name_prefix}Collecting trajectory with {num_steps} steps...")
-    print(f"{name_prefix}Output will be saved to: {output_dir}")
 
-    # create the output directory following DROID if it does not exist
+    # get timestamp
     now = datetime.now()
     new_date = now.strftime("%Y-%m-%d")
     new_timestamp = now.strftime("%Y-%m-%d-%Hh-%Mm-%Ss")
     new_folder_stamp = now.strftime("%a_%b_%d_%H:%M:%S_%Y")
-    trajectory_output_dir = os.path.join(output_dir, "success", new_date, new_folder_stamp)
-    if trajectory_output_dir and not os.path.exists(trajectory_output_dir):
-        os.makedirs(trajectory_output_dir)
-    recording_folderpath = os.path.join(trajectory_output_dir, "recordings")
-    save_filepath = os.path.join(trajectory_output_dir, "trajectory.h5")
 
     # Read states from trajectory files
-    print(f"{name_prefix}Reading state {state1_index} from {traj1_file}...")
     state1 = read_state_from_trajectory(traj1_file, state1_index)
-
-    print(f"{name_prefix}Reading state {state2_index} from {traj2_file}...")
     state2 = read_state_from_trajectory(traj2_file, state2_index)
+
+    # Extract cartesian positions and gripper positions
+    cartesian1 = np.array(state1["observation"]["robot_state"]["cartesian_position"])
+    gripper1 = state1["observation"]["robot_state"]["gripper_position"]
+    
+    cartesian2 = np.array(state2["observation"]["robot_state"]["cartesian_position"])
+    gripper2 = state2["observation"]["robot_state"]["gripper_position"]
+
+    # move the robot to initial position before collecting
+    print(f"{name_prefix}Moving robot to initial position...")
+    current_state, _ = env.get_state()
+    success = go_to_state(env, current_state, cartesian1, gripper1)
+    if not success:
+        print(f"{name_prefix}Failed to move robot to initial position.")
+        return None
+    time.sleep(0.5)  # wait for a moment
+    
+    # Calculate num_steps from step_delta if provided
+    if step_delta is not None:
+        distance = np.linalg.norm(cartesian2[:3] - cartesian1[:3])
+        num_steps = max(1, int(np.ceil(distance / step_delta)))
+        print(f"{name_prefix}Calculated {num_steps} steps from distance {distance:.3f}m and step_delta {step_delta}m")
+    else:
+        print(f"{name_prefix}Collecting trajectory with {num_steps} steps...")
 
     # Save updated metadata JSON
     traj1_folder = os.path.dirname(traj1_file)
     json_files1 = sorted(Path(traj1_folder).expanduser().rglob("*.json"))
     meta = json.load(open(json_files1[0], "r"))
     start_task = meta.get("current_task", "unknown task")
+
+    # create the output directory following DROID if it does not exist
+    trajectory_output_dir = os.path.join(output_dir, "success", new_date, new_folder_stamp)
+    if trajectory_output_dir and not os.path.exists(trajectory_output_dir):
+        os.makedirs(trajectory_output_dir)
+    recording_folderpath = os.path.join(trajectory_output_dir, "recordings")
+    save_filepath = os.path.join(trajectory_output_dir, "trajectory.h5")
 
     traj2_folder = os.path.dirname(traj2_file)
     json_files2 = sorted(Path(traj2_folder).expanduser().rglob("*.json"))
@@ -407,16 +433,6 @@ def collect_single_trajectory(
         now=now,
     )
 
-    # Extract cartesian positions and gripper positions
-    cartesian1 = np.array(state1["observation"]["robot_state"]["cartesian_position"])
-    gripper1 = state1["observation"]["robot_state"]["gripper_position"]
-
-    cartesian2 = np.array(state2["observation"]["robot_state"]["cartesian_position"])
-    gripper2 = state2["observation"]["robot_state"]["gripper_position"]
-
-    print(f"{name_prefix}State 1 - Cartesian: {cartesian1}, Gripper: {gripper1}")
-    print(f"{name_prefix}State 2 - Cartesian: {cartesian2}, Gripper: {gripper2}")
-
     # Create interpolation policy
     policy = InterpolationPolicy(
         start_cartesian=cartesian1,
@@ -426,19 +442,6 @@ def collect_single_trajectory(
         num_steps=num_steps,
     )
 
-    # Create robot environment
-    print(f"{name_prefix}Initializing robot environment...")
-    env = RobotEnv(
-        action_space=action_space,
-        gripper_action_space=gripper_action_space,
-    )
-
-    # move the robot to initial position before collecting
-    print(f"{name_prefix}Moving robot to initial position...")
-    current_state, _ = env.get_state()
-    go_to_state(env, current_state, cartesian1, gripper1)
-
-    time.sleep(1.0)  # wait for a moment
     print(f"{name_prefix}Starting Trajectory Collection...")
     # NOTE: save_images=True will bug out
     controller_info = collect_trajectory(
@@ -514,6 +517,8 @@ def load_batch_config(config_file: Path) -> Dict[str, Any]:
     # Set defaults for optional fields
     if "num_steps" not in config:
         config["num_steps"] = 100
+    if "step_delta" not in config:
+        config["step_delta"] = None
     if "action_space" not in config:
         config["action_space"] = "cartesian_position"
     if "gripper_action_space" not in config:
@@ -524,7 +529,7 @@ def load_batch_config(config_file: Path) -> Dict[str, Any]:
     
     return config
 
-def collect_batch_trajectories(config: Dict[str, Any]) -> None:
+def collect_batch_trajectories(env: RobotEnv, config: Dict[str, Any]) -> None:
     """
     Collect multiple trajectories from a batch config.
     
@@ -534,12 +539,14 @@ def collect_batch_trajectories(config: Dict[str, Any]) -> None:
     trajectories = config["trajectories"]
     output_dir = config["output_dir"]
     global_num_steps = config["num_steps"]
+    global_step_delta = config.get("step_delta")
     global_action_space = config["action_space"]
     global_gripper_action_space = config["gripper_action_space"]
     
     print(f"Found {len(trajectories)} trajectories to collect")
     print(f"Output directory: {output_dir}")
-    print(f"Global settings: num_steps={global_num_steps}, action_space={global_action_space}, gripper_action_space={global_gripper_action_space}")
+    step_delta_str = f"step_delta={global_step_delta}m" if global_step_delta is not None else "step_delta=None"
+    print(f"Global settings: num_steps={global_num_steps}, {step_delta_str}, action_space={global_action_space}, gripper_action_space={global_gripper_action_space}")
     
     successful = []
     failed = []
@@ -550,30 +557,33 @@ def collect_batch_trajectories(config: Dict[str, Any]) -> None:
         print(f"Collecting trajectory {idx}/{len(trajectories)}: {traj_name}")
         print(f"{'='*60}")
         
-        try:
-            num_steps = traj_config.get("num_steps", global_num_steps)
-            action_space = traj_config.get("action_space", global_action_space)
-            gripper_action_space = traj_config.get("gripper_action_space", global_gripper_action_space)
-            
-            output_path = collect_single_trajectory(
-                traj1_file=traj_config["traj1_file"],
-                traj2_file=traj_config["traj2_file"],
-                state1_index=traj_config["state1_index"],
-                state2_index=traj_config["state2_index"],
-                output_dir=output_dir,
-                num_steps=num_steps,
-                action_space=action_space,
-                gripper_action_space=gripper_action_space,
-                trajectory_name=traj_name,
-            )
-            successful.append((traj_name, output_path))
-            print(f"✓ Successfully collected: {traj_name}")
-            
-        except Exception as e:
-            print(f"✗ Failed to collect {traj_name}: {str(e)}")
-            failed.append((traj_name, str(e)))
+        num_steps = traj_config.get("num_steps", global_num_steps)
+        step_delta = traj_config.get("step_delta", global_step_delta)
+        action_space = traj_config.get("action_space", global_action_space)
+        gripper_action_space = traj_config.get("gripper_action_space", global_gripper_action_space)
+        
+        output_path = collect_single_trajectory(
+            env=env,
+            traj1_file=traj_config["traj1_file"],
+            traj2_file=traj_config["traj2_file"],
+            state1_index=traj_config["state1_index"],
+            state2_index=traj_config["state2_index"],
+            output_dir=output_dir,
+            num_steps=num_steps,
+            action_space=action_space,
+            gripper_action_space=gripper_action_space,
+            trajectory_name=traj_name,
+            step_delta=step_delta,
+        )
+        if output_path is None:
+            failed.append((traj_name, "Failed to move robot to initial position."))
+            print(f"✗ Failed to collect {traj_name}")
             continue
-    
+        successful.append((traj_name, output_path))
+        print(f"✓ Successfully collected: {traj_name}")
+
+        time.sleep(0.5)  # wait for a moment
+
     # Print summary
     print(f"\n{'='*60}")
     print("BATCH COLLECTION SUMMARY")
@@ -597,11 +607,20 @@ def collect_batch_trajectories(config: Dict[str, Any]) -> None:
 def main():
     args = tyro.cli(Args)
 
+    # Create robot environment
+    print(f"Initializing robot environment...")
+    env = RobotEnv(
+        action_space=args.action_space,
+        gripper_action_space=args.gripper_action_space,
+    )
+    env.reset()
+    time.sleep(1.0)
+
     if args.config_file is not None:
         # Batch mode: load config and collect multiple trajectories
         print(f"Loading batch config from: {args.config_file}")
         config = load_batch_config(args.config_file)
-        collect_batch_trajectories(config)
+        collect_batch_trajectories(env=env, config=config)
     else:
         # Single trajectory mode: use CLI args (backward compatible)
         required_fields = {
@@ -620,6 +639,7 @@ def main():
             )
         
         collect_single_trajectory(
+            env=env,
             traj1_file=args.traj1_file,
             traj2_file=args.traj2_file,
             state1_index=args.state1_index,
@@ -628,6 +648,7 @@ def main():
             num_steps=args.num_steps,
             action_space=args.action_space,
             gripper_action_space=args.gripper_action_space,
+            step_delta=args.step_delta,
         )
 
 
