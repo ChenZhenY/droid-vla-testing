@@ -2,15 +2,17 @@
 export HF_LEROBOT_HOME=/mnt/data2/droid/lerobot_dataset
 export PATH=/mnt/data2/dexmimic/miniconda3/envs/robot/bin:$PATH
 
-DATA_ROOT=/mnt/data2/droid/droid/data
-DATASET=2025-12-24
-TARGET_NAME=RL2_Klaus_1224_4tasks_1228
+DATA_ROOT=/mnt/data2/droid/droid/data/interpolation
+DATASET=2025-12-30
+TARGET_NAME=RL2_Klaus_2tasks_interpolation_1230
+COUNTERFACTUAL=True  # if True, we don't have controller_info in the dataset, and all movement is enabled
 USER=Daniel233
 
-# # convert SVO to MP4 TODO: check whether need to use start data, used when only converting data of that day
-# see config in the script, by default convert all data under data/ folder
+# convert SVO to MP4 TODO: check whether need to use start date, used when only converting data of that day
+see config in the script, by default convert all data under data/ folder
 cd /mnt/data2/droid/droid
-python scripts/convert/svo_to_mp4.py --lab RL2 --start_date ${DATASET}
+python scripts/convert/svo_to_mp4.py \
+    --lab RL2 --start_date ${DATASET} --data_dir $DATA_ROOT
 # python scripts/convert/svo_to_depth.py --lab RL2 --start_date ${DATASET} --lab_agnostic False
 
 # # label the gripper stages
@@ -24,7 +26,8 @@ python ./scripts/convert/aggregate_instruction.py --root $DATA_ROOT/success/$DAT
 # merge to the LeRobot format
 cd /mnt/data2/droid/openpi
 uv run examples/droid/convert_droid_data_to_lerobot.py --data-dir $DATA_ROOT/success/$DATASET \
-                                                        --target_dir $TARGET_NAME
+                                                        --target_dir $TARGET_NAME \
+                                                        $( [[ "$COUNTERFACTUAL" == "True" ]] && echo "--counterfactual" )
 
 # upload to Cedar
 rsync -avz --progress $HF_LEROBOT_HOME/$USER/$TARGET_NAME zhenyang-ice:/storage/cedar/cedar0/cedarp-dxu345-0/zhenyang/datasets

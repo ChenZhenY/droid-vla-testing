@@ -3,6 +3,8 @@
 # Script to generate batch config and collect interpolated trajectories
 # Usage: ./run_batch_interpolation.sh [options]
 
+# TODO: calcuate delta based on the average delta speed of the dataset
+
 set -e  # Exit on error
 
 # Default values
@@ -11,7 +13,7 @@ DATASET_DIR="/mnt/data2/droid/droid/data/success/2025-12-24"
 TASKS="put the white bowl on the countertop shelf,put the tea bag in the yellow drawer"
 STAGE=0
 NUM_DEMOS=50
-STEP_DELTA=0.05
+STEP_DELTA=0.005 # important to set a small value to match the control frequency of the robot
 BIDIRECTION="True"  # generate bidirectional trajectory pairs
 OUTPUT_YAML="data/batch_config_interpolate.yaml"
 OUTPUT_DIR="data/interpolation"
